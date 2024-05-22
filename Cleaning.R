@@ -1,18 +1,16 @@
 ## --- INPUT --- ##
-# Loading the necessary packages for the analysis
+# Loading the necessary packages for the cleaning
 library(tidyverse)
 library(openxlsx)
 
 # Loading in the data
-df = read.xlsx("CR24 Spring class survey raw data.xlsx")
+df = read.xlsx("data/CR24 Spring class survey raw data.xlsx")
 
 # Looking at the data
-View(df)
 summary(df)
 
 # Checking for duplicate column names
-duplicates <- names(df)[duplicated(names(df))]
-print(duplicates)
+print(names(df)[duplicated(names(df))])
 
 ## -- TRANSFORMATION --- ##
 # Making unique column names, otherwise tidyverse will throw an error
@@ -113,6 +111,20 @@ df = df %>%
   mutate(dv_manipulation = if_else(randomized_group == 'MoneyasTimeWorkedImmediate' | randomized_group == 'MoneyasTimeLongTerm', dv_manipulation * hourly_wage, 
                                    dv_manipulation))
 
+# Create the IV, where Money-as-time-worked framing is valued as a 1 and simply asking for money is valued as a 0
+df = df %>% 
+  mutate(iv = case_when(
+    randomized_group == "Moneylongterm" | randomized_group == "MoneyImmediate" ~ "0",
+    randomized_group == "MoneyasTimeLongTerm" | randomized_group == "MoneyasTimeWorkedImmediate" ~ "1")
+  )
+
+# Creating the long/short term variable, where the long term framing is valued as 1 and the immediate (short) term framing is valued as 0
+df = df %>% 
+  mutate(long_or_short = case_when(
+    randomized_group == "Moneylongterm" | randomized_group == "MoneyasTimeLongTerm" ~ "1",
+    randomized_group == "MoneyImmediate" | randomized_group == "MoneyasTimeWorkedImmediate" ~ "0")
+  )
+
 # Removing all the rows with missing values --> There was a respondent who did not answer the second control question
 df = df %>% 
   na.omit()
@@ -123,25 +135,12 @@ df = df %>%
   mutate(self_representativeness = ((rep1 + rep2 + rep3) / 3),
          control = ((control1 + control2 + control3) / 3))
 
-## --- ANALYSIS --- ##
-install.packages("mediation")
-library(mediation)
+# Changing age to a numerical variable instead of a character and gender to a factor 
+df$age = as.numeric(df$age)
+df$gender = factor(df$gender, levels = c(1, 2), labels = c("Male", "Female"))
+df$iv = as.numeric(df$iv)
+df$long_or_short = as.numeric(df$long_or_short)
 
-# Specify the mediation model
-med_model <- lm(cbind(self_representativeness, control ) ~ randomized_group, data = df)
-out_model <- lm(dv_manipulation ~ randomized_group + self_representativeness + control, data = df)
-
-# Combine the models into a mediation object
-med_obj <- mediate(med_model, out_model, treat = "randomized_group", mediator = c("mediator1", "mediator2"))
-summary(med_obj)
-
-# Bootstrap for indirect effect
-med_boot <- mediate(med_model, out_model, treat = "randomized_group", mediator = "mediator", sims = 1000)
-summary(med_boot)
-
-
-
-
-
-
-
+## -- OUTPUT -- ##
+# Saving the data, so we don't have to run the cleaning again and again
+write_csv(df, "cleaned_data.csv")
