@@ -11,32 +11,69 @@ df = read_csv("cleaned_data.csv")
 summary(df)
 
 ## --- ANALYSIS --- ##
-# FRIST TRY FROM CHATGPT AND THE MODULES
-# Mediator Models
-mediation_rep = lm(self_representativeness ~ iv + age + gender, data = df)
-summary(mediation_rep)
+### H0: There is a significant difference in the likelihood of donating between the money-as-time-worked framing and simply asking for money conditions. ###
+# Making sure the dv_manipulation is a binomial variable where 1 means that the respondent donated some amount of money and 0 means that they did not
+df = df %>% 
+  mutate(dv_dummy = ifelse(dv_manipulation > 0, 1, 0))
 
-mediation_con = lm(control ~ iv + age + gender, data = df)
-summary(mediation_con)
+model = glm(dv_dummy ~ iv, data = df, family = "binomial")
+summary(model) # --> The results of the analysis show that there is no difference in the likelihood of donating between the different groups
 
-# Fit Outcome Model
-full_model_rep = lm(dv_manipulation ~ iv + self_representativeness, data = df)
-full_model_con = lm(dv_manipulation ~ iv + control, data = df)
+### H1: Money-as-time-worked framing increases donations (compared to conventional money framing). ###
+model2 = lm(dv_manipulation ~ iv, data = df)
+summary(model2) # --> The results show that there is a significant difference between the amount donated between the different conditions, p-value < 0.05 (= 0.000447).
+                # --> The 'Intercept' shows that for the condition that simply asks for money is estimated to be 31.06 euro.
+                # --> Whilst the 'iv' condition shows that the respondents within the money-as-time-worked condition donate 70.27 euro more, so a total of 101.33 euro.
 
-full_model_test = lm(dv_manipulation ~ iv + self_representativeness + control, data = df)
+### H2: This effect is mediated by self-representativeness. (That is, the belief that the donation would reflect the donor’s self) ###
+model3 = lm(self_representativeness ~ iv, data = df)
+summary(model3) # --> The results show that there is a significant difference between the perception of self representativeness between the different conditions, p-value < 0.05 (0.00258).
+                # --> The 'Intercept' shows that for the condition that simply asks for money is estimated to be 4.3036.
+                # --> Whilst the 'iv' condition shows that the respondents within the money-as-time-worked condition feel more self representativeness by 0.6930, so a total of 4.9966.
 
-# Bootstrapping Mediation Analysis
-mediation_results_rep = mediate(mediation_rep, full_model_rep, treat = "iv", mediator = "self_representativeness", boot = TRUE, sims = 500)
-mediation_results_con = mediate(mediation_con, full_model_con, treat = "iv", mediator = "control", boot = TRUE, sims = 500)
+### H3: This effect is mediated by control. (That is, the belief that the donor has control over how the donation is used) ###
+model4 = lm(control ~ iv, data = df)
+summary(model4) # --> The results show that there is a significant difference between the perception of control between the different conditions, p-value < 0.05 (2.73e-11).
+                # --> The 'Intercept' shows that for the condition that simply asks for money is estimated to be 2.4620.
+                # --> Whilst the 'iv' condition shows that the respondents within the money-as-time-worked condition feel more control by 1.7658, so a total of 4.2278
 
-summary(mediation_results_rep)
-summary(mediation_results_con)
+### However, this mediation takes place simultaneously thus we will have to analyze this with the help of Hayes (2022) ###
+# This enables us to use process macro by Andrew F. Hayes (2022)
+source("../../process.R")
 
-mediation_results_rep2 = mediate(mediation_rep, full_model_test, treat = "iv", mediator = "self_representativeness", boot = TRUE, sims = 500)
-mediation_results_con2 = mediate(mediation_con, full_model_test, treat = "iv", mediator = "control", boot = TRUE, sims = 500)
+set.seed(3451947) # Setting the seed for replicability for the bootstrapping
+process(data = df, y = "dv_manipulation", x = "iv", m = c("self_representativeness", "control"), model = 4)
 
-summary(mediation_results_rep2)
-summary(mediation_results_con2)
+# --> The results confirm the results from the previous analyse, since it shows that the different 'iv' conditions are significantly (p-value < 0.05, self representativeness = 0.0026, control = 0.0000) for both mediators.
+# --> The results of the simultaneous mediating analysis (including the iv, self representativeness, and control) show that only the iv has a significant effect on the amount of money donated, namely a increase of 44.7856 euro's, with a p-value < 0.05 (0.0396).
+# --> This means that self representativeness and control do not influence the amount of money donated, both have a p-value > 0.05 (0.1168 and 0.1038 respectively)
+# --> However, the bootstrapping did show a significant effect of self representativeness and control on the amount that was donated, since the lowerbound and upperbound of the bootstrap does not include a 0. Thus, still is certainly something to keep in mind.
+
+### H4: This effect is moderated by short-term vs. long-term impact. (That is, whether the charity is focused on making a s/t vs l/t impact.) ###
+model7 = lm(dv_manipulation ~ iv + long_or_short + iv * long_or_short, data = df)
+summary(model7) # --> The results show that if the condition is combined with a long or short term question the amount donated is not significantly influenced, p-value > 0.05 (0.77861).
+
+model8 = lm(control ~ iv + long_or_short + iv * long_or_short, data = df)
+summary(model8) # --> The results show that if the condition is combined with a long or short term question the perceived control is not significantly influenced, p-value > 0.05 (0.624)
+
+### However, again, the moderated mediation takes place simultaneously thus we will have to anlyze this too with the help of Hayes (2022) ###
+set.seed(1573920)
+process(data = df, y = "dv_manipulation", x = "iv", m = "control", w = "long_or_short", model = 8)
+
+# --> I have to explain the results still
+
+### H5: This effect is moderated by trust of the charity. (That is, how much the donor trusts this specific charity.) ###
+model5 = lm(dv_manipulation ~ iv + trust + iv * trust, data = df)
+summary(model5) # --> The results show that if the condition is combined with perceived trust the amount donated is not significantly influenced, p-value > 0.05 (0.414)
+
+model6 = lm(self_representativeness ~ iv + trust + iv * trust, data = df)
+summary(model6) # --> The results show that if the conditions is combined with perceived trust the perceived self representativeness is not significantly influenced, p-value > 0.05 (0.937055).
+
+### However, again, the moderated mediation takes place simultaneously thus we will have to anlyze this too with the help of Hayes (2022) ###
+set.seed(56789) # Setting the seed for replicability for the bootstrapping
+process(data = df, y = "dv_manipulation", x = "iv", m = "self_representativeness", w = "trust", model = 8)
+
+# --> I have to explain the results still
 
 
 
@@ -72,10 +109,41 @@ summary(result_c_rep)
 set.seed(56789)
 process(data = df, y = "dv_manipulation", x = "iv", m = "self_representativeness", w = "trust", model = 8)
 
-## --> with control as a mediator
+## --> with control as a moderator
+# Testing if the c-path is significant
 result_c_con = lm(dv_manipulation ~ iv + long_or_short + iv * long_or_short, data = df)
 summary(result_c_con)
 
 # testing the moderated mediation 
 set.seed(56789)
 process(data = df, y = "dv_manipulation", x = "iv", m = "control", w = "long_or_short", model = 8)
+
+
+
+# --- PROBABLY NOT RIGHT ANYMORE --- #
+# FRIST TRY FROM CHATGPT AND THE MODULES
+# Mediator Models
+mediation_rep = lm(self_representativeness ~ iv + age + gender, data = df)
+summary(mediation_rep)
+
+mediation_con = lm(control ~ iv + age + gender, data = df)
+summary(mediation_con)
+
+# Fit Outcome Model
+full_model_rep = lm(dv_manipulation ~ iv + self_representativeness, data = df)
+full_model_con = lm(dv_manipulation ~ iv + control, data = df)
+
+full_model_test = lm(dv_manipulation ~ iv + self_representativeness + control, data = df)
+
+# Bootstrapping Mediation Analysis
+mediation_results_rep = mediate(mediation_rep, full_model_rep, treat = "iv", mediator = "self_representativeness", boot = TRUE, sims = 500)
+mediation_results_con = mediate(mediation_con, full_model_con, treat = "iv", mediator = "control", boot = TRUE, sims = 500)
+
+summary(mediation_results_rep)
+summary(mediation_results_con)
+
+mediation_results_rep2 = mediate(mediation_rep, full_model_test, treat = "iv", mediator = "self_representativeness", boot = TRUE, sims = 500)
+mediation_results_con2 = mediate(mediation_con, full_model_test, treat = "iv", mediator = "control", boot = TRUE, sims = 500)
+
+summary(mediation_results_rep2)
+summary(mediation_results_con2)
