@@ -3,17 +3,19 @@
 library(tidyverse)
 library(mediation)
 library(interactions)
+library(ggplot2)
 
 # Loading in the data
 df = read_csv("cleaned_data.csv")
 
 # Checking the summary, to make sure everything was saved correctly
 summary(df)
+table(df$dv_dummy)
 
 ## --- ANALYSIS --- ##
 ### H0: There is a significant difference in the likelihood of donating between the money-as-time-worked framing and simply asking for money conditions. ###
 # Making sure the dv_manipulation is a binomial variable where 1 means that the respondent donated some amount of money and 0 means that they did not
-df = df %>% 
+df = df %>%
   mutate(dv_dummy = ifelse(dv_manipulation > 0, 1, 0))
 
 model = glm(dv_dummy ~ iv, data = df, family = "binomial")
@@ -50,11 +52,11 @@ process(data = df, y = "dv_manipulation", x = "iv", m = c("self_representativene
 # --> However, the bootstrapping did show a significant effect of self representativeness and control on the amount that was donated, since the lowerbound and upperbound of the bootstrap does not include a 0. Thus, still is certainly something to keep in mind.
 
 ### H4: This effect is moderated by short-term vs. long-term impact. (That is, whether the charity is focused on making a s/t vs l/t impact.) ###
-model7 = lm(dv_manipulation ~ iv + long_or_short + iv * long_or_short, data = df)
-summary(model7) # --> The results show that if the condition is combined with a long or short term question the amount donated is not significantly influenced, p-value > 0.05 (0.77861).
+model5 = lm(dv_manipulation ~ iv + long_or_short + iv * long_or_short, data = df)
+summary(model5) # --> The results show that if the condition is combined with a long or short term question the amount donated is not significantly influenced, p-value > 0.05 (0.77861).
 
-model8 = lm(control ~ iv + long_or_short + iv * long_or_short, data = df)
-summary(model8) # --> The results show that if the condition is combined with a long or short term question the perceived control is not significantly influenced, p-value > 0.05 (0.624)
+model6 = lm(control ~ iv + long_or_short + iv * long_or_short, data = df)
+summary(model6) # --> The results show that if the condition is combined with a long or short term question the perceived control is not significantly influenced, p-value > 0.05 (0.624)
 
 ### However, again, the moderated mediation takes place simultaneously thus we will have to anlyze this too with the help of Hayes (2022) ###
 set.seed(1573920)
@@ -63,17 +65,36 @@ process(data = df, y = "dv_manipulation", x = "iv", m = "control", w = "long_or_
 # --> I have to explain the results still
 
 ### H5: This effect is moderated by trust of the charity. (That is, how much the donor trusts this specific charity.) ###
-model5 = lm(dv_manipulation ~ iv + trust + iv * trust, data = df)
-summary(model5) # --> The results show that if the condition is combined with perceived trust the amount donated is not significantly influenced, p-value > 0.05 (0.414)
+model7 = lm(dv_manipulation ~ iv + trust + iv * trust, data = df)
+summary(model7) # --> The results show that if the condition is combined with perceived trust the amount donated is not significantly influenced, p-value > 0.05 (0.414)
 
-model6 = lm(self_representativeness ~ iv + trust + iv * trust, data = df)
-summary(model6) # --> The results show that if the conditions is combined with perceived trust the perceived self representativeness is not significantly influenced, p-value > 0.05 (0.937055).
+model8 = lm(self_representativeness ~ iv + trust + iv * trust, data = df)
+summary(model8) # --> The results show that if the conditions is combined with perceived trust the perceived self representativeness is not significantly influenced, p-value > 0.05 (0.937055).
 
 ### However, again, the moderated mediation takes place simultaneously thus we will have to anlyze this too with the help of Hayes (2022) ###
 set.seed(56789) # Setting the seed for replicability for the bootstrapping
-process(data = df, y = "dv_manipulation", x = "iv", m = "self_representativeness", w = "trust", model = 8)
+process(data = df, y = "dv_manipulation", x = "iv", m = "self_representativeness", w = "trust", model = 5)
 
 # --> I have to explain the results still
+
+
+## --- VISUALIZAITON --- ##
+df %>% 
+  group_by(iv) %>% 
+  summarize(mean_dv = mean(dv_manipulation)) %>%
+  mutate(iv = ifelse(iv == 0, "Money", "Money-as-time-worked")) %>% 
+  ggplot(aes(x = iv, y = mean_dv)) +
+  geom_col() +
+  labs(x = "Donation Frames", y = "Mean Donation", title = "Mean Donation by Donation Frame") +
+  theme_bw()
+
+df %>% 
+  group_by(randomized_group) %>% 
+  summarize(mean_dv = mean(dv_manipulation)) %>% 
+  ggplot(aes(x = randomized_group, y = mean_dv)) + 
+  geom_col() +
+  labs(x = "Conditions", y = "Mean Donation", title = "Mean Donation by Condition") +
+  theme_bw()
 
 
 
@@ -117,33 +138,3 @@ summary(result_c_con)
 # testing the moderated mediation 
 set.seed(56789)
 process(data = df, y = "dv_manipulation", x = "iv", m = "control", w = "long_or_short", model = 8)
-
-
-
-# --- PROBABLY NOT RIGHT ANYMORE --- #
-# FRIST TRY FROM CHATGPT AND THE MODULES
-# Mediator Models
-mediation_rep = lm(self_representativeness ~ iv + age + gender, data = df)
-summary(mediation_rep)
-
-mediation_con = lm(control ~ iv + age + gender, data = df)
-summary(mediation_con)
-
-# Fit Outcome Model
-full_model_rep = lm(dv_manipulation ~ iv + self_representativeness, data = df)
-full_model_con = lm(dv_manipulation ~ iv + control, data = df)
-
-full_model_test = lm(dv_manipulation ~ iv + self_representativeness + control, data = df)
-
-# Bootstrapping Mediation Analysis
-mediation_results_rep = mediate(mediation_rep, full_model_rep, treat = "iv", mediator = "self_representativeness", boot = TRUE, sims = 500)
-mediation_results_con = mediate(mediation_con, full_model_con, treat = "iv", mediator = "control", boot = TRUE, sims = 500)
-
-summary(mediation_results_rep)
-summary(mediation_results_con)
-
-mediation_results_rep2 = mediate(mediation_rep, full_model_test, treat = "iv", mediator = "self_representativeness", boot = TRUE, sims = 500)
-mediation_results_con2 = mediate(mediation_con, full_model_test, treat = "iv", mediator = "control", boot = TRUE, sims = 500)
-
-summary(mediation_results_rep2)
-summary(mediation_results_con2)
