@@ -1,84 +1,104 @@
 ## -- INPUT -- ##
 # Loading the necessary packages for the analysis
-library(tidyverse)
-library(mediation)
 library(interactions)
+library(tidyverse)
 library(ggplot2)
+library(psych)
+library(car)
 
 # Loading in the data
 df = read_csv("cleaned_data.csv")
 
 # Checking the summary, to make sure everything was saved correctly
 summary(df)
-table(df$dv_dummy)
 
 ## --- ANALYSIS --- ##
-### H0: There is a significant difference in the likelihood of donating between the money-as-time-worked framing and simply asking for money conditions. ###
-# Making sure the dv_manipulation is a binomial variable where 1 means that the respondent donated some amount of money and 0 means that they did not
-df = df %>%
-  mutate(dv_dummy = ifelse(dv_manipulation > 0, 1, 0))
+# Getting some summary statistics to report
+describe(df)
 
-model = glm(dv_dummy ~ iv, data = df, family = "binomial")
-summary(model) # --> The results of the analysis show that there is no difference in the likelihood of donating between the different groups
+# Correlation matrix between different variables
+cor_matrix = df %>% 
+  select(trust, self_representativeness, control) %>% 
+  corr.test()
+print(cor_matrix)
 
-### H1: Money-as-time-worked framing increases donations (compared to conventional money framing). ###
-model2 = lm(dv_manipulation ~ iv, data = df)
-summary(model2) # --> The results show that there is a significant difference between the amount donated between the different conditions, p-value < 0.05 (= 0.000447).
-                # --> The 'Intercept' shows that for the condition that simply asks for money is estimated to be 31.06 euro.
-                # --> Whilst the 'iv' condition shows that the respondents within the money-as-time-worked condition donate 70.27 euro more, so a total of 101.33 euro.
+# Exploring the correlation between self-representativeness and trust
+ggplot(data = df, aes(x = self_representativeness, y = trust)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(x = "Self-Representativeness", y = "Trust", title = "Checking for multicollinearity")
 
-### H2: This effect is mediated by self-representativeness. (That is, the belief that the donation would reflect the donor’s self) ###
-model3 = lm(self_representativeness ~ iv, data = df)
-summary(model3) # --> The results show that there is a significant difference between the perception of self representativeness between the different conditions, p-value < 0.05 (0.00258).
-                # --> The 'Intercept' shows that for the condition that simply asks for money is estimated to be 4.3036.
-                # --> Whilst the 'iv' condition shows that the respondents within the money-as-time-worked condition feel more self representativeness by 0.6930, so a total of 4.9966.
+# Calculating the VIF
+VIF = lm(self_representativeness ~ trust + control, data = df) # adding control because you need more than 2 variables
+vif(VIF)
 
-### H3: This effect is mediated by control. (That is, the belief that the donor has control over how the donation is used) ###
-model4 = lm(control ~ iv, data = df)
-summary(model4) # --> The results show that there is a significant difference between the perception of control between the different conditions, p-value < 0.05 (2.73e-11).
-                # --> The 'Intercept' shows that for the condition that simply asks for money is estimated to be 2.4620.
-                # --> Whilst the 'iv' condition shows that the respondents within the money-as-time-worked condition feel more control by 1.7658, so a total of 4.2278
+## --- DIRECT EFFECT -- ##
+### H1: Compared to money, money-as-time-worked framing has a larger positive effect on monetary donation. ###
+model1 = lm(dv_manipulation ~ iv, data = df)
+summary(model1) 
 
-### However, this mediation takes place simultaneously thus we will have to analyze this with the help of Hayes (2022) ###
-# This enables us to use process macro by Andrew F. Hayes (2022)
-source("../../process.R")
+## --- PARALLEL MEDIATION --- ##
+### H2: The relationship between donation framing (money vs money-as-time-worked) and monetary donations is positively mediated by a higher level of self-representativeness. ###
+model2 = lm(self_representativeness ~ iv, data = df)
+summary(model2) 
+
+### H3: The relationship between donation framing (money vs money-as-time-worked) and monetary donations is positively mediated by a higher level of control over the donation. ###
+model3 = lm(control ~ iv, data = df)
+summary(model3)
+
+### However, this mediation takes place simultaneously thus we will have to analyze this with the help of Andrew F. Hayes (2022). ###
+# This enables us to use process macro by Andrew F. Hayes (2022).
+source("../../process.R") # --> This only works on my computer since this uses a specific path
 
 set.seed(3451947) # Setting the seed for replicability for the bootstrapping
-process(data = df, y = "dv_manipulation", x = "iv", m = c("self_representativeness", "control"), model = 4)
+process(data = df, 
+        y = "dv_manipulation", 
+        x = "iv", 
+        m = c("self_representativeness", "control"), 
+        model = 4)
 
-# --> The results confirm the results from the previous analyse, since it shows that the different 'iv' conditions are significantly (p-value < 0.05, self representativeness = 0.0026, control = 0.0000) for both mediators.
-# --> The results of the simultaneous mediating analysis (including the iv, self representativeness, and control) show that only the iv has a significant effect on the amount of money donated, namely a increase of 44.7856 euro's, with a p-value < 0.05 (0.0396).
-# --> This means that self representativeness and control do not influence the amount of money donated, both have a p-value > 0.05 (0.1168 and 0.1038 respectively)
-# --> However, the bootstrapping did show a significant effect of self representativeness and control on the amount that was donated, since the lowerbound and upperbound of the bootstrap does not include a 0. Thus, still is certainly something to keep in mind.
+## --- MODERATED MEDIATION --- ##
+### H4: The mediated effect of control over the donation is more positively moderated by immediate impact framing compared to long-term impact framing. ###
+model4 = lm(control ~ iv + long_or_short + iv * long_or_short, data = df)
+summary(model4) 
 
-### H4: This effect is moderated by short-term vs. long-term impact. (That is, whether the charity is focused on making a s/t vs l/t impact.) ###
+### H5: The relationship between donation framing (money vs money-as-time-worked) and monetary donations is more positively moderated by immediate impact framing than long-term impact framing. ###
 model5 = lm(dv_manipulation ~ iv + long_or_short + iv * long_or_short, data = df)
-summary(model5) # --> The results show that if the condition is combined with a long or short term question the amount donated is not significantly influenced, p-value > 0.05 (0.77861).
+summary(model5)
 
-model6 = lm(control ~ iv + long_or_short + iv * long_or_short, data = df)
-summary(model6) # --> The results show that if the condition is combined with a long or short term question the perceived control is not significantly influenced, p-value > 0.05 (0.624)
-
-### However, again, the moderated mediation takes place simultaneously thus we will have to anlyze this too with the help of Hayes (2022) ###
+### However, again, the moderated mediation takes place simultaneously thus we will have to analyze this too with the help of Andrew F. Hayes (2022). ###
 set.seed(1573920)
-process(data = df, y = "dv_manipulation", x = "iv", m = "control", w = "long_or_short", model = 8)
+process(data = df, 
+        y = "dv_manipulation", 
+        x = "iv", m = "control", 
+        w = "long_or_short", 
+        model = 8)
 
-# --> I have to explain the results still
+### H6: The relationship between donation framing (money vs money-as-time-worked) and monetary donations is positively moderated by a higher level of trust of the charity. ###
+model6 = lm(dv_manipulation ~ iv + trust + iv * trust, data = df)
+summary(model6)
 
-### H5: This effect is moderated by trust of the charity. (That is, how much the donor trusts this specific charity.) ###
-model7 = lm(dv_manipulation ~ iv + trust + iv * trust, data = df)
-summary(model7) # --> The results show that if the condition is combined with perceived trust the amount donated is not significantly influenced, p-value > 0.05 (0.414)
-
-model8 = lm(self_representativeness ~ iv + trust + iv * trust, data = df)
-summary(model8) # --> The results show that if the conditions is combined with perceived trust the perceived self representativeness is not significantly influenced, p-value > 0.05 (0.937055).
-
-### However, again, the moderated mediation takes place simultaneously thus we will have to anlyze this too with the help of Hayes (2022) ###
+### However, again, the moderated mediation takes place simultaneously thus we will have to analyze this too with the help of Andrew F. Hayes (2022). ###
 set.seed(56789) # Setting the seed for replicability for the bootstrapping
-process(data = df, y = "dv_manipulation", x = "iv", m = "self_representativeness", w = "trust", model = 5)
+process(data = df, 
+        y = "dv_manipulation", 
+        x = "iv", m = "self_representativeness", 
+        w = "trust", 
+        model = 5)
 
-# --> I have to explain the results still
+# Using Johnson-Neyman to determine where trust has a significant effect on the direct relationship between Donation Framing and Monetary Donation
+JN_model = lm(dv_manipulation ~ iv * trust, data = df)
+trust_range = range(df$trust, na.rm = TRUE)
 
+# This is also used for figure 6: Johson-Neyman Intervals regarding Trust on the direct relationship
+johnson_neyman(model = JN_model, 
+               pred = "iv", 
+               modx = "trust", 
+               plot = TRUE,
+               mod.range = trust_range)
 
 ## --- VISUALIZAITON --- ##
+# Figure 2: Average Monetary Donation by Donation Frame
 df %>% 
   group_by(iv) %>% 
   summarize(mean_dv = mean(dv_manipulation)) %>%
@@ -86,55 +106,57 @@ df %>%
   ggplot(aes(x = iv, y = mean_dv)) +
   geom_col() +
   labs(x = "Donation Frames", y = "Mean Donation", title = "Mean Donation by Donation Frame") +
-  theme_bw()
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 30, face = "bold"),
+    axis.title.x = element_text(size = 25),
+    axis.title.y = element_text(size = 25),
+    axis.text.x = element_text(size = 20),
+    axis.text.y = element_text(size = 20))
 
+# Figure 3: Average Self-Representativeness by Donation Frame
+df %>% 
+  group_by(iv) %>% 
+  summarize(mean_rep = mean(self_representativeness)) %>%
+  mutate(iv = ifelse(iv == 0, "Money", "Money-as-time-worked")) %>% 
+  ggplot(aes(x = iv, y = mean_rep)) +
+  geom_col() +
+  labs(x = "Donation Frames", y = "Mean Self-Representativeness", title = "Mean Self-Representativenss by Donation Frame") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 30, face = "bold"),
+    axis.title.x = element_text(size = 25),
+    axis.title.y = element_text(size = 25),
+    axis.text.x = element_text(size = 20),
+    axis.text.y = element_text(size = 20))
+
+# Figure 4: Average Control by Donation Frame
+df %>% 
+  group_by(iv) %>% 
+  summarize(mean_con = mean(control)) %>%
+  mutate(iv = ifelse(iv == 0, "Money", "Money-as-time-worked")) %>% 
+  ggplot(aes(x = iv, y = mean_con)) +
+  geom_col() +
+  labs(x = "Donation Frames", y = "Mean Control", title = "Mean Control by Donation Frame") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 30, face = "bold"),
+    axis.title.x = element_text(size = 25),
+    axis.title.y = element_text(size = 25),
+    axis.text.x = element_text(size = 20),
+    axis.text.y = element_text(size = 20))
+
+# Figure 5: Average Monetary Donation by different levels of Framing of Impact
 df %>% 
   group_by(randomized_group) %>% 
   summarize(mean_dv = mean(dv_manipulation)) %>% 
   ggplot(aes(x = randomized_group, y = mean_dv)) + 
   geom_col() +
-  labs(x = "Conditions", y = "Mean Donation", title = "Mean Donation by Condition") +
-  theme_bw()
-
-
-
-##### TRYING SOMETHING ELSE FROM YOUTUBE ##### --> https://www.youtube.com/watch?v=p2XbncjiA6k and https://www.youtube.com/watch?v=MIIF-ICF52Y
-# Testing the significance of all the different paths
-c_path = lm(dv_manipulation ~ iv, data = df)
-summary(c_path)
-
-a_path = lm(self_representativeness ~ iv, data = df)
-summary(a_path)
-
-b_path = lm(dv_manipulation ~ self_representativeness + iv, data = df)
-summary(b_path)
-
-# Complete mediation results:
-set.seed(78992850)
-
-results_boot = mediate(a_path, b_path, sims = 5000, treat = "iv", mediator = "self_representativeness", boot = TRUE)
-summary(results_boot)
-
-
-
-##### Moderated mediation from youtube ##### --> https://www.youtube.com/watch?v=If0ap-Yonbc and https://www.youtube.com/watch?v=eYGwF7pRozI&t=8s
-# This enables us to use process macro by Andrew F. Hayes (2022)
-source("../../process.R")
-
-## --> with self-representativeness as a mediator
-# Testing if the c-path is significant
-result_c_rep = lm(dv_manipulation ~ iv + trust + iv * trust, data = df)
-summary(result_c_rep)
-
-# Testing the moderated mediation
-set.seed(56789)
-process(data = df, y = "dv_manipulation", x = "iv", m = "self_representativeness", w = "trust", model = 8)
-
-## --> with control as a moderator
-# Testing if the c-path is significant
-result_c_con = lm(dv_manipulation ~ iv + long_or_short + iv * long_or_short, data = df)
-summary(result_c_con)
-
-# testing the moderated mediation 
-set.seed(56789)
-process(data = df, y = "dv_manipulation", x = "iv", m = "control", w = "long_or_short", model = 8)
+  labs(x = "Levels of Framing of Impact", y = "Mean Donation", title = "Mean Donation by levels of Framing of Impact") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(size = 30, face = "bold"),
+    axis.title.x = element_text(size = 25),
+    axis.title.y = element_text(size = 25),
+    axis.text.x = element_text(size = 18),
+    axis.text.y = element_text(size = 18))

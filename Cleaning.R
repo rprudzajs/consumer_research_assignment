@@ -129,7 +129,7 @@ df = df %>%
 df = df %>% 
   na.omit()
 
-# Creating a new variable for the self_representativeness and control
+# Creating a new variable for the self-representativeness and control
 df = df %>%
   group_by(duration, hourly_wage, trust, age, gender, randomized_group, dv_manipulation) %>%
   mutate(self_representativeness = ((rep1 + rep2 + rep3) / 3),
